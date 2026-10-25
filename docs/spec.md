@@ -112,8 +112,14 @@ from system font fallback.
 
 ## 9. Sources and toolchain
 
-- Glyph sources in UFO format, one master per style.
-- Build with `fontmake` / `fontTools`, hint with `ttfautohint`.
+- Glyphs are defined parametrically in Python (`src/altfont/glyphs.py`):
+  each glyph is built from simple shapes (stems, bars, superellipse bowls)
+  using per-style parameters (stem widths, glyph widths, side bearings), so
+  Regular and Bold share one design. Shapes are merged with `skia-pathops`
+  and converted to quadratic outlines with `fontTools`.
+- Fonts are assembled with `fontTools.fontBuilder` and hinted with
+  `ttfautohint`. UFO export may be added later if manual editing in a font
+  editor becomes necessary.
 - All build and test steps scripted and reproducible from the repository.
 - All glyphs are original work, drawn from scratch for altfont. No outlines,
   metrics, kerning, anchors, hinting programs or OpenType feature code are

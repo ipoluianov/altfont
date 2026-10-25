@@ -1,0 +1,96 @@
+"""Shape primitives built on skia-pathops.
+
+Glyphs are composed from simple filled shapes (rectangles, polygons,
+superellipses) combined with boolean operations, then converted to
+overlap-free quadratic TrueType outlines.
+"""
+
+import pathops
+from fontTools.pens.cu2quPen import Cu2QuPen
+from fontTools.pens.ttGlyphPen import TTGlyphPen
+
+# Bezier handle length relative to the radius. 0.5523 draws a circle;
+# larger values give squarer curves with longer straight-ish sides, which
+# rasterize more crisply at small sizes.
+DEFAULT_SQUARENESS = 0.60
+
+
+class Shape:
+    """A filled region. Supports | (union), - (difference), & (intersection)."""
+
+    def __init__(self, path=None):
+        self.path = path if path is not None else pathops.Path()
+
+    def _op(self, other, op):
+        return Shape(pathops.op(self.path, other.path, op))
+
+    def __or__(self, other):
+        return self._op(other, pathops.PathOp.UNION)
+
+    def __sub__(self, other):
+        return self._op(other, pathops.PathOp.DIFFERENCE)
+
+    def __and__(self, other):
+        return self._op(other, pathops.PathOp.INTERSECTION)
+
+    def draw(self, pen):
+        self.path.draw(pen)
+
+
+def union(*shapes):
+    result = Shape()
+    for s in shapes:
+        result = result | s
+    return result
+
+
+def rect(x0, y0, x1, y1):
+    p = pathops.Path()
+    p.moveTo(x0, y0)
+    p.lineTo(x0, y1)
+    p.lineTo(x1, y1)
+    p.lineTo(x1, y0)
+    p.close()
+    return Shape(p)
+
+
+def polygon(points):
+    p = pathops.Path()
+    p.moveTo(*points[0])
+    for pt in points[1:]:
+        p.lineTo(*pt)
+    p.close()
+    return Shape(p)
+
+
+def ellipse(x0, y0, x1, y1, k=DEFAULT_SQUARENESS):
+    """Superellipse-like oval inscribed in the box (x0, y0)-(x1, y1)."""
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    rx, ry = (x1 - x0) / 2, (y1 - y0) / 2
+    hx, hy = rx * k, ry * k
+    p = pathops.Path()
+    p.moveTo(cx, y0)
+    p.cubicTo(cx - hx, y0, x0, cy - hy, x0, cy)
+    p.cubicTo(x0, cy + hy, cx - hx, y1, cx, y1)
+    p.cubicTo(cx + hx, y1, x1, cy + hy, x1, cy)
+    p.cubicTo(x1, cy - hy, cx + hx, y0, cx, y0)
+    p.close()
+    return Shape(p)
+
+
+def ring(x0, y0, x1, y1, vstem, hstem, k=DEFAULT_SQUARENESS, k_inner=None):
+    """Oval stroke: vertical sides `vstem` thick, top/bottom `hstem` thick."""
+    if k_inner is None:
+        k_inner = k
+    outer = ellipse(x0, y0, x1, y1, k)
+    inner = ellipse(x0 + vstem, y0 + hstem, x1 - vstem, y1 - hstem, k_inner)
+    return outer - inner
+
+
+def to_ttglyph(shape, max_err=1.0):
+    """Convert a shape to an overlap-free quadratic TrueType glyph."""
+    # TrueType expects clockwise outer contours (y-up).
+    path = pathops.simplify(shape.path, fix_winding=True, clockwise=True)
+    tt_pen = TTGlyphPen(None)
+    path.draw(Cu2QuPen(tt_pen, max_err, all_quadratic=True))
+    return tt_pen.glyph()

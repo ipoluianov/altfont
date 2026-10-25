@@ -1,5 +1,5 @@
 fonttools
-fontmake
-ufoLib2
+skia-pathops
+ttfautohint-py
 freetype-py
-fontbakery
+pillow
