@@ -2,7 +2,8 @@
 
 ## Project
 
-altfont: a UI font for desktop applications (Regular, Bold, Italic, with CJK).
+altfont: a UI font for desktop applications (Regular, Bold, Italic,
+Bold Italic; Latin, Cyrillic, Greek).
 The main goal is crisp rendering at small UI sizes (11–18 ppem) with stock
 FreeType grayscale or monochrome rendering, without subpixel AA.
 Full requirements: [docs/spec.md](docs/spec.md). Read it before design or
@@ -33,5 +34,7 @@ tooling decisions; update it when a decision changes the requirements.
   looks zoomed in. Render sheets in grayscale `hintslight`, `hintfull` and
   mono modes are the source of truth.
 - Keep builds reproducible: no manual steps outside `scripts/`.
-- Third-party glyph sources must be OFL-compatible; record origin and license
-  of every imported source in `docs/`.
+- All glyphs are drawn from scratch. Never copy, trace or convert outlines,
+  metrics, kerning, anchors, hinting or feature code from other fonts. Other
+  fonts are allowed only as visual references and in comparison renders.
+- Licensing: fonts are OFL 1.1 (`OFL.txt`), scripts are MIT (`LICENSE`).

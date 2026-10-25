@@ -47,34 +47,38 @@ these must be covered by the ranges above.
 - Regular (400)
 - Bold (700)
 - Italic (400)
-- Bold Italic (700) — needed for correct RIBBI style linking in most toolkits;
-  see open questions.
+- Bold Italic (700) — needed for correct RIBBI style linking in most toolkits.
 
 Delivered as separate static TrueType fonts forming one family. No variable
 font in v1 (hinting a variable font is much harder and gives worse results at
 small sizes).
 
-Italic: Latin, Cyrillic and Greek get a real italic or a carefully corrected
-oblique (to be decided after prototyping). CJK glyphs stay upright in italic
-styles, following common CJK practice.
+
+Italic: a real italic or a carefully corrected oblique (to be decided after
+prototyping).
 
 Bold must stay distinguishable from Regular at 11–12 ppem, i.e. stems must
 differ by at least one full pixel at those sizes.
 
 ## 5. Character coverage
 
-v1 scope (tentative):
+v1 covers the European scripts and the symbols common in UI text:
 
-- Latin: Basic Latin, Latin-1 Supplement, Latin Extended-A.
-- Cyrillic: full Russian, Ukrainian, Belarusian, Serbian, Bulgarian, Kazakh.
-- Greek: modern monotonic.
-- Punctuation, currency, common math, arrows, and UI symbols
-  (check marks, ellipsis, triangles, etc.).
-- CJK: ideographs plus kana and full-width forms. Exact standard is an open
-  question (e.g. GB 2312 / JIS X 0208 level 1+2 / common Hangul).
+- Latin: Basic Latin, Latin-1 Supplement, Latin Extended-A, plus the
+  Latin Extended-B and Latin Extended Additional characters needed for
+  Romanian, Vietnamese and pan-European use.
+- Cyrillic: the Cyrillic block (U+0400–U+04FF) and the Cyrillic Supplement
+  characters needed for modern languages (Russian, Ukrainian, Belarusian,
+  Serbian, Macedonian, Bulgarian, Kazakh, Uzbek, Tatar, Bashkir, etc.).
+- Greek: modern monotonic Greek.
+- General Punctuation, currency signs, letterlike symbols, number forms
+  (fractions), superscripts and subscripts.
+- Arrows, common mathematical operators, geometric shapes and other UI
+  symbols (check marks, ballot boxes, triangles, ellipsis, etc.).
 
-Out of scope for v1: RTL scripts, Indic scripts, emoji, box drawing for
-terminals.
+Out of scope for v1: CJK, RTL scripts, Indic and other complex scripts,
+emoji, box drawing for terminals. Missing characters are expected to come
+from system font fallback.
 
 ## 6. Design principles
 
@@ -84,70 +88,65 @@ terminals.
   details; terminals cut horizontally or vertically where possible.
 - Stem widths and key vertical metrics (baseline, x-height, cap height,
   ascender, descender) chosen so they snap cleanly at core UI sizes.
+- Diacritics designed to stay separate from the base letter at 11–12 ppem,
+  including stacked Vietnamese marks.
 - Slightly loose default spacing, suitable for UI text at small sizes.
 - Tabular (fixed-width) figures by default or via `tnum`; to be decided.
-- CJK glyphs simplified where needed so that strokes do not merge at
-  12–16 ppem; Latin and CJK must be visually balanced (weight, height).
 
 ## 7. Metrics
 
 - TrueType outlines (`glyf`, quadratic curves).
 - UPM: 2048 (preferred for TrueType hinting) — to be confirmed.
 - Vertical metrics consistent across all styles; `OS/2` typo metrics with
-  `USE_TYPO_METRICS` set, and `hhea`/`win` metrics chosen so that no common
-  glyph is clipped on Windows.
-- Line height suitable for UI (roughly 1.2–1.3 em incl. CJK).
-- CJK ideographs on a full-width 1 em advance.
+  `USE_TYPO_METRICS` set, and `hhea`/`win` metrics chosen so that no glyph,
+  including accented capitals, is clipped on Windows.
+- Line height suitable for UI (roughly 1.2–1.25 em).
 
-## 8. Hinting and bitmaps
+## 8. Hinting
 
-- Latin/Cyrillic/Greek: TrueType hinting, initially via `ttfautohint` with
-  per-size control instructions where needed; manual hinting only if
-  autohinting proves insufficient.
-- CJK: autohinting support for ideographs is weak, so the outlines themselves
-  must be pixel-friendly. Optional embedded bitmap strikes (`EBDT`/`EBLC`)
-  for the smallest sizes (e.g. 12, 14, 16 ppem) are a candidate, but the
-  outlines must stand on their own: many renderers (DirectWrite, some
-  cairo/fontconfig setups) ignore embedded bitmaps. Decision after a
-  prototype.
+- TrueType hinting, initially via `ttfautohint` with per-size control
+  instructions where needed; manual hinting only if autohinting proves
+  insufficient.
+- Outlines must render well even when hints are ignored horizontally
+  (FreeType v40) or entirely (unhinted renderers).
 
 ## 9. Sources and toolchain
 
 - Glyph sources in UFO format, one master per style.
 - Build with `fontmake` / `fontTools`, hint with `ttfautohint`.
 - All build and test steps scripted and reproducible from the repository.
-- CJK and possibly Latin outlines may be derived from existing open-licensed
-  fonts (e.g. OFL-licensed CJK families) instead of drawn from scratch. Any
-  derived source must have a license compatible with redistribution under
-  SIL OFL 1.1, and Reserved Font Names must be respected.
+- All glyphs are original work, drawn from scratch for altfont. No outlines,
+  metrics, kerning, anchors, hinting programs or OpenType feature code are
+  taken from other fonts, neither directly nor through tracing or automated
+  conversion. Other fonts may be used only as visual references and for
+  side-by-side render comparisons. The design must not imitate a specific
+  existing typeface closely enough to be recognised as a clone.
 
 ## 10. Quality assurance
 
 - Automated render sheets via FreeType (Python `freetype-py`) for every style,
   for 11–32 ppem, in each rendering mode from section 2; output as PNG.
 - Visual regression: compare render sheets against approved references.
-- Real UI sample texts (menus, dialogs, tables) in English, Russian, Chinese,
-  Japanese, rendered side by side with reference UI fonts.
+- Real UI sample texts (menus, dialogs, tables) in English, Russian and other
+  covered languages, rendered side by side with reference UI fonts.
 - `fontbakery` checks (universal profile) and coverage checks against the
   declared character set.
 - Manual review in real applications: GTK and Qt on Linux, Windows.
 
 ## 11. Deliverables
 
-- `TTF` files for each style, hinted.
+- Hinted `TTF` files for the four styles.
 - Render sheets and a short specimen.
-- Font license file (SIL OFL 1.1 expected).
 
-## 12. Open questions
+## 12. Licensing
 
-1. CJK scope: Simplified Chinese, Traditional Chinese, Japanese, Korean —
-   which, and which character standard?
-2. Is Bold Italic required (recommended for style linking)?
-3. Draw CJK from scratch or derive from an existing OFL family?
-   Drawing from scratch is several thousand glyphs per weight.
-4. Embedded bitmaps for small CJK sizes: yes / no / after prototype.
-5. Licensing: the repository is MIT now; fonts are normally SIL OFL 1.1, and
-   OFL is mandatory if any OFL source is used. Proposed: OFL for fonts, MIT
-   for build scripts.
-6. Final family name (the repository name `altfont` is a working title).
-7. Proportional or tabular figures by default.
+- Fonts (sources and binaries): SIL Open Font License 1.1, see `OFL.txt`.
+  No Reserved Font Name is declared for altfont.
+- Build scripts and tools: MIT, see `LICENSE`.
+
+## 13. Open questions
+
+1. Final family name (`altfont` is a working title, may become final);
+   check for conflicts with existing fonts and trademarks before release.
+2. Proportional or tabular figures by default.
+3. CJK may be revisited after v1.
