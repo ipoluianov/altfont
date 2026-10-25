@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT / ".pydeps")]
 
 import freetype  # noqa: E402
+import uharfbuzz as hb  # noqa: E402
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 
 FONTS_DIR = ROOT / "build" / "fonts"
@@ -23,7 +24,7 @@ SIZES = [11, 12, 13, 14, 15, 16, 18, 20, 24, 32]
 ZOOM_SIZES = [11, 12, 13, 14, 16]
 ZOOM = 4
 
-TEXT = "Hogan neon gone ego  Бонд один дно  nnonnHHOHH иидиин"
+TEXT = "File Edit View Help  Save file? (Ctrl+S) 12:45, 3.14% — «Да» / Нет  To AVATAR  Файл Правка Вид Справка  Ελληνικά  Tiếng Việt  Straße Żółć  Қазақ тілі  ← → ✓ ☑ €₽"
 
 MODES = {
     # name: (load flags, render mode)
@@ -33,7 +34,7 @@ MODES = {
     "unhinted": (freetype.FT_LOAD_NO_HINTING, freetype.FT_RENDER_MODE_NORMAL),
 }
 
-REFERENCES = ["DejaVu Sans", "DejaVu Sans:bold", "Liberation Sans", "Cantarell"]
+REFERENCES = ["DejaVu Sans", "DejaVu Sans:bold", "DejaVu Sans:oblique", "Liberation Sans"]
 
 
 def font_file(pattern):
@@ -44,7 +45,7 @@ def font_file(pattern):
 
 def faces():
     result = [(f"altfont {s}", str(FONTS_DIR / f"altfont-{s}.ttf"))
-              for s in ("Regular", "Bold")]
+              for s in ("Regular", "Bold", "Italic", "BoldItalic")]
     result += [(ref, font_file(ref)) for ref in REFERENCES]
     return result
 
@@ -68,28 +69,42 @@ def bitmap_to_image(bitmap):
     return img
 
 
+def shape(path, text):
+    """HarfBuzz shaping: [(glyph id, kerning in font units)], as applications do."""
+    blob = hb.Blob.from_file_path(path)
+    hb_face = hb.Face(blob)
+    font = hb.Font(hb_face)
+    buf = hb.Buffer()
+    buf.add_str(text)
+    buf.guess_segment_properties()
+    hb.shape(font, buf, {"kern": True})
+    return [(info.codepoint, pos.x_advance - font.get_glyph_h_advance(info.codepoint))
+            for info, pos in zip(buf.glyph_infos, buf.glyph_positions)]
+
+
 def render_line(path, size, mode, text):
+    """Render like an integer-positioning toolkit: hinted advances plus rounded kerning."""
     load_flags, render_mode = MODES[mode]
     face = freetype.Face(path)
     face.set_pixel_sizes(0, size)
-    ascent = (face.size.ascender + 63) // 64
+    upem = face.units_per_EM
+    # Room for stacked marks above the line ascent (usWinAscent).
+    ascent = (face.size.ascender + 63) // 64 + size // 5
     descent = (-face.size.descender + 63) // 64
-    width = sum(_advance(face, ch, load_flags) for ch in text) + 4
-    canvas = Image.new("L", (width, ascent + descent), 0)
-    pen = 2
-    for ch in text:
-        face.load_char(ch, load_flags)
+    glyphs = []
+    for gid, kern in shape(path, text):
+        face.load_glyph(gid, load_flags)
         face.glyph.render(render_mode)
         g = face.glyph
-        canvas.paste(255, (pen + g.bitmap_left, ascent - g.bitmap_top),
-                     bitmap_to_image(g.bitmap))
-        pen += (g.advance.x + 32) // 64
+        glyphs.append((bitmap_to_image(g.bitmap), g.bitmap_left, g.bitmap_top,
+                       (g.advance.x + 32) // 64 + round(kern * size / upem)))
+    width = sum(max(adv, 0) for *_, adv in glyphs) + size * 2
+    canvas = Image.new("L", (width, ascent + descent), 0)
+    pen = 2
+    for img, left, top, adv in glyphs:
+        canvas.paste(255, (pen + left, ascent - top), img)
+        pen += adv
     return canvas
-
-
-def _advance(face, ch, load_flags):
-    face.load_char(ch, load_flags)
-    return (face.glyph.advance.x + 32) // 64
 
 
 def sheet(mode, sizes, text):
@@ -116,7 +131,37 @@ def sheet(mode, sizes, text):
     return img
 
 
+def blur_report(mode="light", sizes=range(11, 19)):
+    """Print the share of partially covered ink, sum c(1-c) / sum c, per size.
+
+    Lower is crisper. With light hinting rows are snapped, so the value is
+    dominated by vertical stems that straddle pixel boundaries.
+    """
+    chars = sorted(set(TEXT.replace(" ", "")))
+    load_flags, render_mode = MODES[mode]
+    print("ppem  " + "  ".join(f"{name:>16}" for name, _ in faces()))
+    for size in sizes:
+        row = []
+        for _, path in faces():
+            face = freetype.Face(path)
+            face.set_pixel_sizes(0, size)
+            fuzz = ink = 0.0
+            for ch in chars:
+                face.load_char(ch, load_flags)
+                face.glyph.render(render_mode)
+                img = bitmap_to_image(face.glyph.bitmap)
+                for v in img.get_flattened_data():
+                    c = v / 255
+                    fuzz += c * (1 - c)
+                    ink += c
+            row.append(fuzz / ink if ink else 0)
+        print(f"{size:4}  " + "  ".join(f"{v:16.3f}" for v in row))
+
+
 def main():
+    if "--blur" in sys.argv:
+        blur_report()
+        return
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for mode in MODES:
         img = sheet(mode, SIZES, TEXT)

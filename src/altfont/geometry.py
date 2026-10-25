@@ -25,7 +25,7 @@ class Shape:
         return Shape(pathops.op(self.path, other.path, op))
 
     def __or__(self, other):
-        return self._op(other, pathops.PathOp.UNION)
+        return union(self, other)
 
     def __sub__(self, other):
         return self._op(other, pathops.PathOp.DIFFERENCE)
@@ -36,12 +36,50 @@ class Shape:
     def draw(self, pen):
         self.path.draw(pen)
 
+    def transform(self, a=1, b=0, c=0, d=1, e=0, f=0):
+        """Affine transform (x, y) -> (a*x + c*y + e, b*x + d*y + f)."""
+        return Shape(self.path.transform(a, b, c, d, e, f))
+
+    def translate(self, dx, dy=0):
+        return self.transform(e=dx, f=dy)
+
+    def rotate180(self, cx, cy):
+        """Point reflection around (cx, cy); used to make 9 from 6."""
+        return self.transform(-1, 0, 0, -1, 2 * cx, 2 * cy)
+
+    def mirror_x(self, axis):
+        """Mirror horizontally around x = axis."""
+        return self.transform(-1, 0, 0, 1, 2 * axis, 0)
+
 
 def union(*shapes):
-    result = Shape()
-    for s in shapes:
-        result = result | s
-    return result
+    """Union of shapes.
+
+    pathops' binary UNION fails on some coincident edges (e.g. a stem edge
+    lying on the tangent of a curve end). Normalizing every operand to one
+    orientation, concatenating and simplifying with the non-zero rule is
+    robust against that.
+    """
+    paths = [pathops.simplify(s.path, clockwise=True) for s in shapes]
+    combined = pathops.Path()
+    pen = combined.getPen()
+    for p in paths:
+        p.draw(pen)
+    try:
+        return Shape(pathops.simplify(combined, clockwise=True))
+    except pathops.PathOpsError:
+        pass
+    # Rare numerical failures: fall back to an OpBuilder, then to pairwise ops.
+    try:
+        builder = pathops.OpBuilder(fix_winding=True)
+        for p in paths:
+            builder.add(p, pathops.PathOp.UNION)
+        return Shape(builder.resolve())
+    except pathops.PathOpsError:
+        result = paths[0]
+        for p in paths[1:]:
+            result = pathops.op(result, p, pathops.PathOp.UNION)
+        return Shape(result)
 
 
 def rect(x0, y0, x1, y1):
@@ -61,6 +99,22 @@ def polygon(points):
         p.lineTo(*pt)
     p.close()
     return Shape(p)
+
+
+def slanted(xb, yb, xt, yt, thickness):
+    """Straight stroke along the centre line (xb, yb)-(xt, yt), yb < yt.
+
+    The ends are cut horizontally, so the stroke sits flat on alignment
+    lines. `thickness` is measured perpendicular to the stroke.
+    """
+    dx, dy = xt - xb, yt - yb
+    hw = thickness * (dx * dx + dy * dy) ** 0.5 / dy / 2
+    return polygon([(xb - hw, yb), (xt - hw, yt), (xt + hw, yt), (xb + hw, yb)])
+
+
+def slant_half_width(dx, dy, thickness):
+    """Half of the horizontal width of a stroke with slope dx/dy."""
+    return thickness * (dx * dx + dy * dy) ** 0.5 / abs(dy) / 2
 
 
 def ellipse(x0, y0, x1, y1, k=DEFAULT_SQUARENESS):

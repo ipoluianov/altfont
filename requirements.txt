@@ -2,4 +2,7 @@ fonttools
 skia-pathops
 ttfautohint-py
 freetype-py
+uharfbuzz
 pillow
+numpy
+fontbakery

@@ -1,6 +1,6 @@
-# altfont — Technical Specification (draft)
+# altfont — Technical Specification
 
-Status: draft, v0.1 (2026-10-25)
+Status: v0.1, all four styles built (2026-10-25)
 
 ## 1. Purpose
 
@@ -53,9 +53,11 @@ Delivered as separate static TrueType fonts forming one family. No variable
 font in v1 (hinting a variable font is much harder and gives worse results at
 small sizes).
 
-
-Italic: a real italic or a carefully corrected oblique (to be decided after
-prototyping).
+Italic: an oblique, the upright design sheared by 9° around the middle of the
+x-height. Spacing, kerning and pixel fit are those of the upright styles. A
+true italic (single-storey a, Cyrillic cursive forms) may come later; at UI
+sizes the difference is barely visible, while a small angle keeps slanted
+stems from stair-stepping.
 
 Bold must stay distinguishable from Regular at 11–12 ppem, i.e. stems must
 differ by at least one full pixel at those sizes.
@@ -89,17 +91,51 @@ from system font fallback.
 - Stem widths and key vertical metrics (baseline, x-height, cap height,
   ascender, descender) chosen so they snap cleanly at core UI sizes.
 - Diacritics designed to stay separate from the base letter at 11–12 ppem,
-  including stacked Vietnamese marks.
+  including stacked Vietnamese marks. Marks over capitals and ascenders are
+  flatter. Vietnamese acute, grave and hook sit beside the circumflex;
+  ď ľ ť Ľ use an apostrophe caron; Latvian ķ ļ ņ ŗ ģ use a comma; Greek
+  capitals carry the tonos at their left.
 - Slightly loose default spacing, suitable for UI text at small sizes.
-- Tabular (fixed-width) figures by default or via `tnum`; to be decided.
+- Tabular (fixed-width) figures by default, so numbers in tables, counters
+  and progress indicators do not jitter. Proportional figures may be added
+  later as `pnum`.
+- Digits are told apart from letters: 0 is narrower and squarer than O,
+  1 has a flag and a base bar (l has a tail, I is a plain stem), 3 has a
+  flat top unlike З.
 
 ## 7. Metrics
 
 - TrueType outlines (`glyf`, quadratic curves).
-- UPM: 2048 (preferred for TrueType hinting) — to be confirmed.
+- UPM: 2048.
+- Key values (font units → px at 13 / 15 ppem after hinting), chosen to
+  round unambiguously at the priority sizes. ttfautohint first rounds the
+  x-height and scales all other heights by the same factor, so values are
+  verified on hinted renders, not just computed:
+
+  | Metric                  | Units | 13 ppem | 15 ppem |
+  |-------------------------|-------|---------|---------|
+  | x-height                | 1100  | 7       | 8       |
+  | Cap height              | 1500  | 9       | 11      |
+  | Ascender                | 1640  | 10      | 12      |
+  | Descender               | −420  | 3       | 3       |
+  | Regular vertical stem   | 160   | 1.0     | 1.2     |
+  | Regular horizontal stem | 150   | 1       | 1       |
+  | Bold vertical stem      | 315   | 2.0     | 2.3     |
+  | Bold horizontal stem    | 250   | 2       | 2       |
+  | Bold horizontals of a e s | 220 | 1       | 2       |
+
+  Horizontal stems and heights are snapped by hinting; vertical stems are
+  not (see 8), hence stem widths are chosen to be whole pixels at 13 ppem.
+  Bold horizontals are 1 px at 11–12 ppem (Bold is carried by its 2 px
+  vertical stems there, as in DejaVu Sans Bold); glyphs with three
+  horizontals in the x-height use thinner ones so their counters stay open.
 - Vertical metrics consistent across all styles; `OS/2` typo metrics with
-  `USE_TYPO_METRICS` set, and `hhea`/`win` metrics chosen so that no glyph,
-  including accented capitals, is clipped on Windows.
+  `USE_TYPO_METRICS` set and equal to `hhea` (line spacing 1950 + 520, about
+  1.2 em). `usWin*` metrics cover the tallest glyph of the family (stacked
+  Vietnamese capitals), so nothing is clipped on Windows; they do not affect
+  line spacing.
+- Symbols in tables: figures and the common math operators (+ − = < > ± × ÷
+  ≤ ≥ ≠ ≈ ≡ ¬ ~ ∈ ∉ ⊂ ⊃) share one advance.
 - Line height suitable for UI (roughly 1.2–1.25 em).
 
 ## 8. Hinting
@@ -109,10 +145,18 @@ from system font fallback.
   insufficient.
 - Outlines must render well even when hints are ignored horizontally
   (FreeType v40) or entirely (unhinted renderers).
+- Pixel fitting: since x hints are ignored in grayscale FreeType, side
+  bearings and glyph widths are adjusted per glyph (`scripts/fit.py`) so
+  vertical stem edges land near pixel boundaries at the default UI sizes
+  where glyphs start on whole pixels: 13 ppem (Qt/KDE, 10 pt) and 15 ppem
+  (GTK3/GNOME, 11 pt). A single outline cannot be aligned at every size;
+  fitting is a trade-off weighted towards these sizes.
+- `head.flags` bit 3 (integer ppem) is set, so fractional pixel sizes such as
+  13.33 px render as the integer ppem the outlines are fitted for.
 
 ## 9. Sources and toolchain
 
-- Glyphs are defined parametrically in Python (`src/altfont/glyphs.py`):
+- Glyphs are defined parametrically in Python (`src/altfont/glyphs/`):
   each glyph is built from simple shapes (stems, bars, superellipse bowls)
   using per-style parameters (stem widths, glyph widths, side bearings), so
   Regular and Bold share one design. Shapes are merged with `skia-pathops`
@@ -121,6 +165,14 @@ from system font fallback.
   `ttfautohint`. UFO export may be added later if manual editing in a font
   editor becomes necessary.
 - All build and test steps scripted and reproducible from the repository.
+- Letters with diacritics are generated from Unicode canonical decompositions
+  (base glyph + marks), so every precomposed letter whose base and marks are
+  in the font is covered. Zero-width combining marks are included for
+  decomposed text.
+- Kerning is computed automatically (`scripts/kern.py`) from outline
+  profiles, only for pairs whose facing sides are both open (A V, L T) or
+  where a short glyph meets an open side (T o, P ., “ A). Accented glyphs
+  are kerned through classes of their base glyph.
 - All glyphs are original work, drawn from scratch for altfont. No outlines,
   metrics, kerning, anchors, hinting programs or OpenType feature code are
   taken from other fonts, neither directly nor through tracing or automated
@@ -135,8 +187,11 @@ from system font fallback.
 - Visual regression: compare render sheets against approved references.
 - Real UI sample texts (menus, dialogs, tables) in English, Russian and other
   covered languages, rendered side by side with reference UI fonts.
-- `fontbakery` checks (universal profile) and coverage checks against the
-  declared character set.
+- `fontbakery` checks (universal profile): no FAIL. Remaining WARNs are
+  design decisions (alt_caron: the apostrophe caron is drawn, not a
+  component; contour_count: β, §, ☑).
+- `scripts/check.py`: coverage against section 5, empty glyphs, metrics,
+  equal character sets across styles.
 - Manual review in real applications: GTK and Qt on Linux, Windows.
 
 ## 11. Deliverables
@@ -150,9 +205,18 @@ from system font fallback.
   No Reserved Font Name is declared for altfont.
 - Build scripts and tools: MIT, see `LICENSE`.
 
-## 13. Open questions
+## 13. Known limitations
+
+- Monochrome rendering at 11–12 ppem: ttfautohint applies x hints there and
+  can close the gap between a stem and a following diagonal (и х), and Bold
+  s g ж get dense. Fixing this needs manual hints or ttfautohint control
+  instructions for individual glyphs.
+- Vertical stems straddle pixels at sizes other than 13 and 15 ppem in
+  grayscale; see section 8.
+- & @ Ћ Ђ ₹ and some rare symbols are schematic and could be refined.
+
+## 14. Open questions
 
 1. Final family name (`altfont` is a working title, may become final);
    check for conflicts with existing fonts and trademarks before release.
-2. Proportional or tabular figures by default.
-3. CJK may be revisited after v1.
+2. CJK may be revisited after v1.

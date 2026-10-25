@@ -7,14 +7,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT / "src"), str(ROOT / ".pydeps")]
 
-from altfont.build import build  # noqa: E402
+from altfont.build import build_family  # noqa: E402
 from altfont.style import STYLES  # noqa: E402
 
 
 def main():
     out = ROOT / "build" / "fonts"
-    for S in STYLES:
-        paths = build(S, out)
+    for paths in build_family(STYLES, out).values():
         for p in paths.values():
             print(p.relative_to(ROOT))
 
