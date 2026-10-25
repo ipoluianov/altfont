@@ -1,0 +1,5 @@
+fonttools
+fontmake
+ufoLib2
+freetype-py
+fontbakery
